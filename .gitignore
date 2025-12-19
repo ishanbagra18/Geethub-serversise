@@ -1,0 +1,5 @@
+# ignore environment files
+.env
+backend/.env
+../frontend
+../docs
