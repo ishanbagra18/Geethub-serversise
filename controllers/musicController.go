@@ -26,51 +26,44 @@ func InitMusicController() {
 	log.Println("✔ Music collection initialized")
 }
 
-
-
-
 // controllers/music.go
 
 func GetSongByID() gin.HandlerFunc {
-    return func(c *gin.Context) {
-        songID := c.Param("song_id")
-        var song models.Song
+	return func(c *gin.Context) {
+		songID := c.Param("song_id")
+		var song models.Song
 
-        // 1. Fetch the song
-        err := songcollection.FindOne(context.Background(), bson.M{"song_id": songID}).Decode(&song)
-        if err != nil {
-            c.JSON(http.StatusNotFound, gin.H{"error": "song not found"})
-            return
-        }
+		// 1. Fetch the song
+		err := songcollection.FindOne(context.Background(), bson.M{"song_id": songID}).Decode(&song)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "song not found"})
+			return
+		}
 
-        // 2. Add History Logic (Only if user_id exists in context)
-        if userID, exists := c.Get("user_id"); exists {
-            ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-            defer cancel()
+		// 2. Add History Logic (Only if user_id exists in context)
+		if userID, exists := c.Get("user_id"); exists {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
 
-            // Remove old duplicate history for this song/user
-            _, _ = historyCollection.DeleteMany(ctx, bson.M{
-                "user_id": userID.(string),
-                "song_id": songID,
-            })
+			// Remove old duplicate history for this song/user
+			_, _ = historyCollection.DeleteMany(ctx, bson.M{
+				"user_id": userID.(string),
+				"song_id": songID,
+			})
 
-            // Insert fresh entry
-            newHistory := models.History{
-                ID:       primitive.NewObjectID(),
-                UserID:   userID.(string),
-                SongID:   songID,
-                PlayedAt: time.Now(),
-            }
-            _, _ = historyCollection.InsertOne(ctx, newHistory)
-        }
+			// Insert fresh entry
+			newHistory := models.History{
+				ID:       primitive.NewObjectID(),
+				UserID:   userID.(string),
+				SongID:   songID,
+				PlayedAt: time.Now(),
+			}
+			_, _ = historyCollection.InsertOne(ctx, newHistory)
+		}
 
-        c.JSON(http.StatusOK, gin.H{"song": song})
-    }
+		c.JSON(http.StatusOK, gin.H{"song": song})
+	}
 }
-
-
-
-
 
 // UploadSong handles song upload with optional image
 func UploadSong(c *gin.Context) {
@@ -83,10 +76,12 @@ func UploadSong(c *gin.Context) {
 	album := c.PostForm("album")
 	genre := c.PostForm("genre")
 	info := c.PostForm("info")
+	language := c.PostForm("language")
+	releaseDateStr := c.PostForm("release_date") // Expecting ISO8601 or yyyy-mm-dd
 
 	// Debug: log incoming content type and form values to help troubleshooting
 	contentType := c.Request.Header.Get("Content-Type")
-	log.Printf("📥 Content-Type: %s | title=%q artist=%q album=%q genre=%q info=%q\n", contentType, title, artist, album, genre, info)
+	log.Printf("📥 Content-Type: %s | title=%q artist=%q album=%q genre=%q info=%q language=%q release_date=%q\n", contentType, title, artist, album, genre, info, language, releaseDateStr)
 
 	safe := func(s string) *string {
 		if s == "" {
@@ -94,6 +89,16 @@ func UploadSong(c *gin.Context) {
 			return &empty
 		}
 		return &s
+	}
+
+	var releaseDatePtr *time.Time
+	if releaseDateStr != "" {
+		// Try parsing as RFC3339, then as yyyy-mm-dd
+		if t, err := time.Parse(time.RFC3339, releaseDateStr); err == nil {
+			releaseDatePtr = &t
+		} else if t, err := time.Parse("2006-01-02", releaseDateStr); err == nil {
+			releaseDatePtr = &t
+		}
 	}
 
 	userIDInterface, exists := c.Get("user_id")
@@ -135,20 +140,22 @@ func UploadSong(c *gin.Context) {
 	log.Printf("DEBUG: imageURL = %v", imageURL)
 
 	song := models.Song{
-		ID:         newID,
-		Title:      safe(title),
-		Artist:     safe(artist),
-		Album:      safe(album),
-		Genre:      safe(genre),
-		Info:       safe(info),
-		FileURL:    &songURL,
-		ImageURL:   imageURL,
-		UploadedBy: safe(uploadedBy),
-		Likes:      []string{},
-		Saves:      []string{},
-		CreatedAt:  &now,
-		UpdatedAt:  &now,
-		SongID:     newID.Hex(), // FIXED
+		ID:          newID,
+		Title:       safe(title),
+		Artist:      safe(artist),
+		Album:       safe(album),
+		Genre:       safe(genre),
+		Info:        safe(info),
+		Language:    safe(language),
+		FileURL:     &songURL,
+		ImageURL:    imageURL,
+		UploadedBy:  safe(uploadedBy),
+		Likes:       []string{},
+		Saves:       []string{},
+		CreatedAt:   &now,
+		UpdatedAt:   &now,
+		SongID:      newID.Hex(),
+		ReleaseDate: releaseDatePtr,
 	}
 
 	_, err = songcollection.InsertOne(context.Background(), song)
@@ -162,11 +169,6 @@ func UploadSong(c *gin.Context) {
 		"song_data": song,
 	})
 }
-
-
-
-
-
 
 func GetAllSongs(c *gin.Context) {
 	log.Println("🔹 GetAllSongs endpoint hit")
@@ -196,31 +198,6 @@ func GetAllSongs(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"songs": songs})
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 func MyuploadedSongs() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		log.Println("🔹 MyuploadedSongs endpoint hit")
@@ -249,46 +226,6 @@ func MyuploadedSongs() gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"songs": songs})
 	}
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 func ToggleLikeSong(c *gin.Context) {
 	log.Println("🔹 ToggleLikeSong endpoint hit")
@@ -382,13 +319,6 @@ func ToggleSave(c *gin.Context) {
 	})
 }
 
-
-
-
-
-
-
-
 func MostLikedSongs() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		log.Println("🔹 MostLikedSongs endpoint hit")
@@ -419,13 +349,7 @@ func MostLikedSongs() gin.HandlerFunc {
 		log.Printf("✅ Successfully fetched %d most liked songs\n", len(songs))
 		c.JSON(http.StatusOK, gin.H{"songs": songs})
 	}
-} 
-
-
-
-
-
-
+}
 
 func MostSavedSongs() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -454,13 +378,6 @@ func MostSavedSongs() gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"songs": songs})
 	}
 }
-
-
-
-
-
-
-
 
 func SearchSongs(c *gin.Context) {
 	search := strings.TrimSpace(c.Query("q"))
@@ -539,11 +456,6 @@ func SearchSongs(c *gin.Context) {
 	})
 }
 
-
-
-
-
-
 func MylikedSongs() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		log.Println("🔹 MylikedSongs endpoint hit")
@@ -558,7 +470,6 @@ func MylikedSongs() gin.HandlerFunc {
 		var songs []models.Song
 		filter := bson.M{"likes": likedBy}
 
-
 		cursor, err := songcollection.Find(context.Background(), filter)
 		if err != nil {
 			log.Println("❌ Failed to fetch songs:", err)
@@ -566,25 +477,17 @@ func MylikedSongs() gin.HandlerFunc {
 			return
 		}
 
-
 		if err = cursor.All(context.Background(), &songs); err != nil {
 			log.Println("❌ Failed to parse songs:", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to parse songs"})
 			return
 		}
 
-
 		log.Printf("✅ Successfully fetched %d liked songs for user %s\n", len(songs), likedBy)
 		c.JSON(http.StatusOK, gin.H{"songs": songs})
 	}
 
-
 }
-
-
-
-
-
 
 func MysavedSongs() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -595,14 +498,10 @@ func MysavedSongs() gin.HandlerFunc {
 			return
 		}
 
-
-
 		savedBy := userIDInterface.(string)
 
 		var songs []models.Song
 		filter := bson.M{"saves": savedBy}
-
-
 
 		cursor, err := songcollection.Find(context.Background(), filter)
 		if err != nil {
@@ -611,14 +510,11 @@ func MysavedSongs() gin.HandlerFunc {
 			return
 		}
 
-
-
 		if err = cursor.All(context.Background(), &songs); err != nil {
 			log.Println("❌ Failed to parse songs:", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to parse songs"})
 			return
 		}
-
 
 		log.Printf("✅ Successfully fetched %d saved songs for user %s\n", len(songs), savedBy)
 		c.JSON(http.StatusOK, gin.H{"songs": songs})

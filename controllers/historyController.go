@@ -16,14 +16,6 @@ import (
 
 
 
-
-
-
-
-
-
-
-
 var historyCollection *mongo.Collection
 
 func InitHistoryController() {
