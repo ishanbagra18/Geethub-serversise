@@ -64,3 +64,34 @@ func GetMyHistory() gin.HandlerFunc {
         })
     }
 }
+
+
+
+
+
+
+
+func ClearHistory() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        userID, exists := c.Get("user_id")  
+        if !exists {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+            return
+        }
+
+
+        _, err := historyCollection.DeleteMany(
+            context.Background(),
+            bson.M{"user_id": userID.(string)},
+        )
+
+
+        if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to clear history"})
+            return
+        }
+
+        c.JSON(http.StatusOK, gin.H{"message": "History cleared successfully"})
+    }
+}
+

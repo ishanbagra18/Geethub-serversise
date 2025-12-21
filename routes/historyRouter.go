@@ -12,6 +12,7 @@ func HistoryRoutes(router *gin.Engine) {
 	history.Use(middleware.Authentication())
 
 	{
-		history.GET("/my", controller.GetMyHistory())
+		history.GET("/my", controller.GetMyHistory());
+		history.DELETE("/clear", controller.ClearHistory());
 	}
 }

@@ -24,13 +24,55 @@ func InitPlaylistController() {
 }
 
 
+// -------------------- GET PLAYLIST BY ID --------------------
+func GetPlaylistByID() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		playlistID := c.Param("id")
+
+		objID, err := primitive.ObjectIDFromHex(playlistID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid playlist ID"})
+			return
+		}
+
+		var playlist models.Playlist
+		err = playlistCollection.FindOne(context.TODO(), bson.M{"_id": objID}).Decode(&playlist)
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Playlist not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error fetching playlist"})
+			return
+		}
+
+		// Check if playlist is public or belongs to user
+		userID, exists := c.Get("user_id")
+		if !playlist.IsPublic {
+			if !exists || (playlist.CreatorID != nil && *playlist.CreatorID != userID.(string)) {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+				return
+			}
+		}
+
+		c.JSON(http.StatusOK, gin.H{"playlist": playlist})
+	}
+}
 
 
 
 
 
 
-// -------------------- CREATE PLAYLIST --------------------
+
+
+
+
+
+
+
+
+
 // -------------------- CREATE PLAYLIST --------------------
 func CreatePlaylist() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -201,20 +243,6 @@ func GetAllPlaylists() gin.HandlerFunc {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // -------------------- GET USER'S PLAYLISTS --------------------
 func GetMyPlaylists() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -268,40 +296,6 @@ func GetMyPlaylists() gin.HandlerFunc {
 
 
 
-// -------------------- GET PLAYLIST BY ID --------------------
-func GetPlaylistByID() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		playlistID := c.Param("id")
-
-		objID, err := primitive.ObjectIDFromHex(playlistID)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid playlist ID"})
-			return
-		}
-
-		var playlist models.Playlist
-		err = playlistCollection.FindOne(context.TODO(), bson.M{"_id": objID}).Decode(&playlist)
-		if err != nil {
-			if err == mongo.ErrNoDocuments {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Playlist not found"})
-				return
-			}
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error fetching playlist"})
-			return
-		}
-
-		// Check if playlist is public or belongs to user
-		userID, exists := c.Get("user_id")
-		if !playlist.IsPublic {
-			if !exists || (playlist.CreatorID != nil && *playlist.CreatorID != userID.(string)) {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
-				return
-			}
-		}
-
-		c.JSON(http.StatusOK, gin.H{"playlist": playlist})
-	}
-}
 
 
 
