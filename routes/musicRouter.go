@@ -15,6 +15,7 @@ func MusicRoute(router *gin.Engine) {
     router.GET("/music/allsongs", controller.GetAllSongs)
     router.GET("/music/topsongs", controller.MostLikedSongs())
     router.GET("/music/saved", controller.MostSavedSongs())
+    router.GET("/music/trendingsongs", controller.TrendingSongs())
 
     // PROTECTED ROUTES
     musicGroup := router.Group("/music")

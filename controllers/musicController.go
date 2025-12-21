@@ -33,25 +33,47 @@ func GetSongByID() gin.HandlerFunc {
 		songID := c.Param("song_id")
 		var song models.Song
 
-		// 1. Fetch the song
-		err := songcollection.FindOne(context.Background(), bson.M{"song_id": songID}).Decode(&song)
+		// 1️⃣ Fetch song
+		err := songcollection.FindOne(
+			context.Background(),
+			bson.M{"song_id": songID},
+		).Decode(&song)
+
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "song not found"})
 			return
 		}
 
-		// 2. Add History Logic (Only if user_id exists in context)
-		if userID, exists := c.Get("user_id"); exists {
+		// 2️⃣ If user is logged in → history + play count logic
+		userID, exists := c.Get("user_id")
+		if exists {
+
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 
-			// Remove old duplicate history for this song/user
+			// 🔒 Prevent fake play count (10 seconds rule)
+			recentFilter := bson.M{
+				"user_id": userID.(string),
+				"song_id": songID,
+				"played_at": bson.M{
+					"$gte": time.Now().Add(-10 * time.Second),
+				},
+			}
+
+			count, _ := historyCollection.CountDocuments(ctx, recentFilter)
+			if count > 0 {
+				// Already played recently → don't increment
+				c.JSON(http.StatusOK, gin.H{"song": song})
+				return
+			}
+
+			// 3️⃣ Remove old history entry (keep latest only)
 			_, _ = historyCollection.DeleteMany(ctx, bson.M{
 				"user_id": userID.(string),
 				"song_id": songID,
 			})
 
-			// Insert fresh entry
+			// 4️⃣ Insert new history record
 			newHistory := models.History{
 				ID:       primitive.NewObjectID(),
 				UserID:   userID.(string),
@@ -59,8 +81,35 @@ func GetSongByID() gin.HandlerFunc {
 				PlayedAt: time.Now(),
 			}
 			_, _ = historyCollection.InsertOne(ctx, newHistory)
+
+			// 5️⃣ Increment play counts (atomic + safe)
+			update := bson.M{
+				"$inc": bson.M{
+					"play_count":                          1,
+					"user_play_counts." + userID.(string): 1,
+				},
+			}
+
+			opts := options.Update().SetUpsert(true)
+
+			_, err := songcollection.UpdateOne(
+				ctx,
+				bson.M{"song_id": songID},
+				update,
+				opts,
+			)
+
+			// Update response object (optional but good UX)
+			if err == nil {
+				song.PlayCount++
+				if song.UserPlayCounts == nil {
+					song.UserPlayCounts = make(map[string]int)
+				}
+				song.UserPlayCounts[userID.(string)]++
+			}
 		}
 
+		// 6️⃣ Return song
 		c.JSON(http.StatusOK, gin.H{"song": song})
 	}
 }
@@ -156,6 +205,10 @@ func UploadSong(c *gin.Context) {
 		UpdatedAt:   &now,
 		SongID:      newID.Hex(),
 		ReleaseDate: releaseDatePtr,
+
+		PlayCount:      0,
+	UserPlayCounts: map[string]int{},
+
 	}
 
 	_, err = songcollection.InsertOne(context.Background(), song)
@@ -517,6 +570,29 @@ func MysavedSongs() gin.HandlerFunc {
 		}
 
 		log.Printf("✅ Successfully fetched %d saved songs for user %s\n", len(songs), savedBy)
+		c.JSON(http.StatusOK, gin.H{"songs": songs})
+	}
+}
+
+func TrendingSongs() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var songs []models.Song
+
+		opts := options.Find().
+			SetSort(bson.D{{Key: "play_count", Value: -1}}).
+			SetLimit(10)
+
+		cursor, err := songcollection.Find(context.Background(), bson.M{}, opts)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch trending songs"})
+			return
+		}
+
+		if err := cursor.All(context.Background(), &songs); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to parse songs"})
+			return
+		}
+
 		c.JSON(http.StatusOK, gin.H{"songs": songs})
 	}
 }

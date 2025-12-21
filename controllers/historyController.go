@@ -66,7 +66,32 @@ func GetMyHistory() gin.HandlerFunc {
 }
 
 
-
+func LastPlayedSong() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        userID, exists := c.Get("user_id")
+        if !exists {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+            return
+        }
+        opts := options.FindOne().
+            SetSort(bson.M{"played_at": -1})
+        var history models.History
+        err := historyCollection.FindOne(
+            context.Background(),
+            bson.M{"user_id": userID.(string)},
+            opts,
+        ).Decode(&history)
+        if err != nil {
+            if err == mongo.ErrNoDocuments {
+                c.JSON(http.StatusOK, gin.H{"message": "No history found"})
+                return
+            }
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch last played song"})
+            return
+        }
+        c.JSON(http.StatusOK, history)
+    }
+}
 
 
 
