@@ -14,5 +14,6 @@ func HistoryRoutes(router *gin.Engine) {
 	{
 		history.GET("/my", controller.GetMyHistory());
 		history.DELETE("/clear", controller.ClearHistory());
+		history.GET("/lastplayed", controller.LastPlayedSong());
 	}
 }
