@@ -57,6 +57,12 @@ func GetMyHistory() gin.HandlerFunc {
 	}
 }
 
+
+
+//last plyed song added
+
+
+
 func LastPlayedSong() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, exists := c.Get("user_id")
