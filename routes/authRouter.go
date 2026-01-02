@@ -3,16 +3,22 @@ package routes
 import (
 	"github.com/gin-gonic/gin"
 	controller "github.com/ishanbagra18/ecommerce-using-go/controllers"
+	"github.com/ishanbagra18/ecommerce-using-go/middleware"
 )
 
-func AuthRoute(incomingRoutes *gin.Engine) {
+func AuthRoute(router *gin.Engine) {
 
-	// Normal email/password routes
-	incomingRoutes.POST("/login", controller.Login())
-	incomingRoutes.POST("/register", controller.Signup())
-	incomingRoutes.PUT("/forgotpassword", controller.ForgetPassword())
-	incomingRoutes.PUT("/updateprofile/:user_id", controller.UpdateProfile())
-	incomingRoutes.GET("/myprofile/:user_id", controller.MyProfile())
-	incomingRoutes.POST("/logout/:user_id", controller.Logout())
+	// 🌍 PUBLIC ROUTES
+	router.POST("/login", controller.Login())
+	router.POST("/register", controller.Signup())
 
+	// 🔐 PROTECTED ROUTES
+	authGroup := router.Group("/auth")
+	authGroup.Use(middleware.Authentication())
+	{
+		authGroup.PUT("/changepassword", controller.ChangePassword())
+		authGroup.PUT("/updateprofile/:user_id", controller.UpdateProfile())
+		authGroup.GET("/myprofile/:user_id", controller.MyProfile())
+		authGroup.POST("/logout", controller.Logout())
+	}
 }

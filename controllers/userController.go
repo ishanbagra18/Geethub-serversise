@@ -7,12 +7,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gin-gonic/gin"     					//Web framework for building APIs
-	"github.com/go-playground/validator/v10"		//Validates request body fields (email, required fields, etc.).
+	"github.com/gin-gonic/gin"               //Web framework for building APIs
+	"github.com/go-playground/validator/v10" //Validates request body fields (email, required fields, etc.).
 
-	"github.com/ishanbagra18/ecommerce-using-go/database"			//Your MongoDB connection file.
-	"github.com/ishanbagra18/ecommerce-using-go/helpers"		//Custom helper functions (e.g. JWT token generation).
-	"github.com/ishanbagra18/ecommerce-using-go/models"		//Your data models (User struct, product struct, etc.).
+	"github.com/ishanbagra18/ecommerce-using-go/database" //Your MongoDB connection file.
+	"github.com/ishanbagra18/ecommerce-using-go/helpers"  //Custom helper functions (e.g. JWT token generation).
+	"github.com/ishanbagra18/ecommerce-using-go/models"   //Your data models (User struct, product struct, etc.).
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -23,10 +23,8 @@ import (
 var usercollection *mongo.Collection
 
 func InitUserController() {
-    usercollection = database.GetCollection("ecommerce", "users")
+	usercollection = database.GetCollection("ecommerce", "users")
 }
-
-
 
 var validate = validator.New()
 
@@ -48,24 +46,9 @@ func VerifyPassword(userPassword string, providedPassword string) (bool, string)
 	if err != nil {
 		msg = "email or password is incorrect"
 		check = false
-	}	
+	}
 	return check, msg
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // Signup controller (with debugging and fixes)
 func Signup() gin.HandlerFunc {
@@ -76,9 +59,9 @@ func Signup() gin.HandlerFunc {
 		defer cancel()
 
 		var user models.User
-		if err := c.BindJSON(&user);    //Yeh user ke signup form ka JSON data lekar user struct me store kar deta hai.  
+		if err := c.BindJSON(&user); //Yeh user ke signup form ka JSON data lekar user struct me store kar deta hai.
 		// Agar kisi field ka type galat ho → BindJSON error deta hai.
-		
+
 		err != nil {
 			log.Println("❌ [Signup] BindJSON error:", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -86,8 +69,7 @@ func Signup() gin.HandlerFunc {
 		}
 		log.Printf("🔍 [Signup] Payload received: %+v\n", user)
 
-		if validationErr := validate.Struct(user); 
-		validationErr != nil {
+		if validationErr := validate.Struct(user); validationErr != nil {
 			log.Println("❌ [Signup] Validation error:", validationErr)
 			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
 			return
@@ -161,19 +143,6 @@ func Signup() gin.HandlerFunc {
 	}
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 // Login controller
 func Login() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -214,11 +183,10 @@ func Login() gin.HandlerFunc {
 		}
 
 		err = helpers.UpdateAllTokens(token, refreshToken, foundUser.User_id)
-if err != nil {
-	c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update tokens"})
-	return
-}
-
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update tokens"})
+			return
+		}
 
 		c.JSON(http.StatusOK, gin.H{
 			"token":         token,
@@ -227,20 +195,6 @@ if err != nil {
 		})
 	}
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 func UpdateProfile() gin.HandlerFunc {
 	return func(C *gin.Context) {
@@ -280,15 +234,10 @@ func UpdateProfile() gin.HandlerFunc {
 
 		updateObj["updated_at"] = time.Now()
 
-		objID, err := primitive.ObjectIDFromHex(userId)
-		if err != nil {
-			C.JSON(http.StatusInternalServerError, gin.H{"error": "error while converting to object id"})
-			return
-		}
-
-		filter := bson.M{"_id": objID}
+		filter := bson.M{"user_id": userId}
 		update := bson.M{"$set": updateObj}
 
+		var err error
 		_, err = usercollection.UpdateOne(ctx, filter, update)
 		if err != nil {
 			C.JSON(http.StatusInternalServerError, gin.H{"error": "error while updating user profile"})
@@ -307,173 +256,125 @@ func UpdateProfile() gin.HandlerFunc {
 	}
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 func MyProfile() gin.HandlerFunc {
-    return func(ctx *gin.Context) {
+	return func(ctx *gin.Context) {
 
-        // Context with timeout for MongoDB operation
-        c, cancel := context.WithTimeout(context.Background(), 100*time.Second)
-        defer cancel()
+		// Context with timeout for MongoDB operation
+		c, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
 
-        // Get user_id from URL params
-        userId := ctx.Param("user_id")
-        if userId == "" {
-            ctx.JSON(http.StatusBadRequest, gin.H{"error": "user id is required"})
-            return
-        }
+		// Get user_id from URL params
+		userId := ctx.Param("user_id")
+		if userId == "" {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "user id is required"})
+			return
+		}
 
-        var user models.User
+		var user models.User
 
-        // Find user in DB using `user_id` field
-        err := usercollection.FindOne(c, bson.M{"user_id": userId}).Decode(&user)
-        if err != nil {
-            if err == mongo.ErrNoDocuments {
-                ctx.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
-            } else {
-                ctx.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching user"})
-            }
-            return
-        }
+		// Find user in DB using `user_id` field
+		err := usercollection.FindOne(c, bson.M{"user_id": userId}).Decode(&user)
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				ctx.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			} else {
+				ctx.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching user"})
+			}
+			return
+		}
 
-        // Success response
-        ctx.JSON(http.StatusOK, gin.H{
-            "message": "User profile fetched successfully",
-            "user":    user,
-        })
-    }
+		// Success response
+		ctx.JSON(http.StatusOK, gin.H{
+			"message": "User profile fetched successfully",
+			"user":    user,
+		})
+	}
 }
-
-
-
-
-
-
 
 // Logout controller
 func Logout() gin.HandlerFunc {
-    return func(c *gin.Context) {
-        ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
-        defer cancel()
-
-        // Get user_id from request (could come from token or URL param)
-        userId := c.Param("user_id")
-        if userId == "" {
-            c.JSON(http.StatusBadRequest, gin.H{"error": "user_id is required"})
-            return
-        }
-
-        // Match user type & UID (authorization check)
-        if err := helpers.MatchUserTypeToUid(c, userId); err != nil {
-            c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
-            return
-        }
-
-        // Clear token and refresh_token in DB
-        update := bson.M{
-            "$set": bson.M{
-                "token":         "",
-                "refresh_token": "",
-            },
-        }
-
-        _, err := usercollection.UpdateOne(ctx, bson.M{"user_id": userId}, update)
-        if err != nil {
-            c.JSON(http.StatusInternalServerError, gin.H{"error": "error logging out"})
-            return
-        }
-
-        // Optionally, if you are setting cookies, clear them here:
-        // c.SetCookie("token", "", -1, "/", "", false, true)
-
-        c.JSON(http.StatusOK, gin.H{"message": "logged out successfully"})
-    }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-func ForgetPassword() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
 		defer cancel()
 
-		// Struct to capture request body
+		// Get user_id from request (could come from token or URL param)
+		userId := c.Param("user_id")
+		if userId == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "user_id is required"})
+			return
+		}
+
+		// Match user type & UID (authorization check)
+		if err := helpers.MatchUserTypeToUid(c, userId); err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Clear token and refresh_token in DB
+		update := bson.M{
+			"$set": bson.M{
+				"token":         "",
+				"refresh_token": "",
+			},
+		}
+
+		_, err := usercollection.UpdateOne(ctx, bson.M{"user_id": userId}, update)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error logging out"})
+			return
+		}
+
+		// Optionally, if you are setting cookies, clear them here:
+		// c.SetCookie("token", "", -1, "/", "", false, true)
+
+		c.JSON(http.StatusOK, gin.H{"message": "logged out successfully"})
+	}
+}
+
+func ChangePassword() gin.HandlerFunc {
+	return func(c *gin.Context) {
+
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
+
+		// 🔐 Logged-in user ID from token
+		userID, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+
 		var request struct {
-			Email       string `json:"email" binding:"required,email"`
 			NewPassword string `json:"new_password" binding:"required,min=6"`
 		}
 
-		// Bind JSON input
 		if err := c.BindJSON(&request); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		// Find user by email
-		var foundUser models.User
-		err := usercollection.FindOne(ctx, bson.M{"email": request.Email}).Decode(&foundUser)
-		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "User with this email not found"})
-			return
-		}
-
-		// Hash new password
 		hashedPassword := HashPassword(request.NewPassword)
 
-		// Update password in DB
 		update := bson.M{
 			"$set": bson.M{
 				"password": hashedPassword,
 			},
 		}
 
-		_, err = usercollection.UpdateOne(ctx, bson.M{"email": request.Email}, update)
+		_, err := usercollection.UpdateOne(
+			ctx,
+			bson.M{"user_id": userID.(string)},
+			update,
+		)
+
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating password"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update password"})
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"message": "Password updated successfully"})
+		c.JSON(http.StatusOK, gin.H{"message": "Password changed successfully"})
 	}
 }
-
-
-
-
-
-
-
-
-
-
-
 
 // GetUsers controller
 func GetUsers() gin.HandlerFunc {
@@ -531,9 +432,6 @@ func GetUsers() gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"users": []string{}})
 	}
 }
-
-
-
 
 // GetUser controller
 func GetUser() gin.HandlerFunc {
