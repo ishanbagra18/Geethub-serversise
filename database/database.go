@@ -23,11 +23,6 @@ import (
 
 // Jaise: ApplyURI(mongoURI)
 
-
-
-
-
-
 var Client *mongo.Client
 
 func InitDB() {
@@ -38,7 +33,7 @@ func InitDB() {
 
 	log.Println("🔍 [InitDB] MongoDB URI found in env")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	log.Println("🔍 [InitDB] Context with timeout created")
 
@@ -75,16 +70,6 @@ func OpenCollection(client *mongo.Client, collectionName string) *mongo.Collecti
 	log.Printf("🔍 [OpenCollection] Returning collection '%s' from DB 'ecommerce'\n", collectionName)
 	return client.Database("ecommerce").Collection(collectionName)
 }
-
-
-
-
-
-
-
-
-
-
 
 // 🔹 GetCollection
 

@@ -13,4 +13,6 @@ type History struct {
     UserID   string             `bson:"user_id" json:"user_id"`
     SongID   string             `bson:"song_id" json:"song_id"`
     PlayedAt time.Time          `bson:"played_at" json:"played_at"`
+    Duration int `bson:"duration,omitempty" json:"duration,omitempty"` // seconds
+
 }
