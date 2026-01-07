@@ -33,11 +33,17 @@ func InitDB() {
 
 	log.Println("🔍 [InitDB] MongoDB URI found in env")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	log.Println("🔍 [InitDB] Context with timeout created")
 
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
+	// Add connection options with retry and timeout settings
+	clientOptions := options.Client().
+		ApplyURI(mongoURI).
+		SetServerSelectionTimeout(60 * time.Second).
+		SetConnectTimeout(60 * time.Second)
+
+	client, err := mongo.Connect(ctx, clientOptions)
 	if err != nil {
 		log.Fatalf("❌ [InitDB] Error connecting to MongoDB: %v", err)
 	}

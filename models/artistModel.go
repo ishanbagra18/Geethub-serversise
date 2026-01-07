@@ -12,12 +12,12 @@ type Artist struct {
 	Bio           *string            `bson:"bio" json:"bio"`
 	Genre         []string           `bson:"genre" json:"genre"`
 	ImageURL      *string            `bson:"image_url,omitempty" json:"image_url,omitempty"`
-	FollowerCount int                `bson:"follower_count" json:"follower_count"`
+	FollowerCount int                `bson:"follower_count" json:"follower_count,omitempty"`
 	Followers     []string           `bson:"followers,omitempty" json:"followers,omitempty"`
-	Created_at    *time.Time         `bson:"created_at" json:"created_at"`
-	Updated_at    *time.Time         `bson:"updated_at" json:"updated_at"`
-	Artist_id     string             `bson:"artist_id" json:"artist_id"`
-	Verified      bool               `bson:"verified" json:"verified"`
+	Created_at    *time.Time         `bson:"created_at" json:"created_at,omitempty"`
+	Updated_at    *time.Time         `bson:"updated_at" json:"updated_at,omitempty"`
+	Artist_id     string             `bson:"artist_id" json:"artist_id,omitempty"`
+	Verified      bool               `bson:"verified" json:"verified,omitempty"`
 	SocialLinks   *SocialLinks       `bson:"social_links,omitempty" json:"social_links,omitempty"`
 }
 

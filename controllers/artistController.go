@@ -358,7 +358,7 @@ func CheckIfFollowing() gin.HandlerFunc {
 // GetArtistSongs retrieves all songs by a specific artist
 func GetArtistSongs() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		artistName := c.Param("artist_name")
+		artistName := c.Param("artist_id")
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
