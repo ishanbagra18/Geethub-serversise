@@ -226,6 +226,7 @@ func FollowArtist() gin.HandlerFunc {
 		}
 
 		// ✅ Convert to string safely (works for ObjectID or string)
+		// this was the main error in the previous one
 		userID := fmt.Sprint(uid)
 
 		artistID := c.Param("artist_id")
