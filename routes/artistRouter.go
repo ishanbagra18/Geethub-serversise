@@ -19,7 +19,7 @@ func ArtistRoutes(incomingRoutes *gin.Engine) {
 	incomingRoutes.GET("/artists/check-following/:artist_id", middleware.Authentication(), controllers.CheckIfFollowing())
 
 	// Admin only routes - for creating/updating/deleting artists
-	incomingRoutes.POST("/createartists", middleware.Authentication(), controllers.CreateArtist())
-	incomingRoutes.PUT("/updateartists/:artist_id", middleware.Authentication(), controllers.UpdateArtist())
+	incomingRoutes.POST("/artists", middleware.Authentication(), controllers.CreateArtist())
+	incomingRoutes.PUT("/artists/:artist_id", middleware.Authentication(), controllers.UpdateArtist())
 	incomingRoutes.DELETE("/artists/:artist_id", middleware.Authentication(), controllers.DeleteArtist())
 }
