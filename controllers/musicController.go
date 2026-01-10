@@ -679,126 +679,35 @@ func LatestRelaseSongs() gin.HandlerFunc {
 	}
 }
 
-// TodaysBiggestHits returns the top 10 songs played most today
-func TodaysBiggestHits() gin.HandlerFunc {
+func TopSongsByUser() gin.HandlerFunc { 
 	return func(c *gin.Context) {
-		log.Println("🔹 TodaysBiggestHits endpoint hit")
-
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-
-		// Get today's start (00:00:00) and end (23:59:59) in UTC
-		now := time.Now()
-		todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-		todayEnd := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999, now.Location())
-
-		log.Printf("📅 Fetching plays from %v to %v\n", todayStart, todayEnd)
-
-		// Aggregate pipeline to get top songs played today
-		historyCollection := database.OpenCollection(database.Client, "history")
-
-		pipeline := mongo.Pipeline{
-			// Match plays from today
-			{{Key: "$match", Value: bson.M{
-				"played_at": bson.M{
-					"$gte": todayStart,
-					"$lte": todayEnd,
-				},
-			}}},
-			// Group by song_id and count plays
-			{{Key: "$group", Value: bson.M{
-				"_id":   "$song_id",
-				"plays": bson.M{"$sum": 1},
-			}}},
-			// Sort by play count descending
-			{{Key: "$sort", Value: bson.M{"plays": -1}}},
-			// Limit to top 10
-			{{Key: "$limit", Value: 10}},
-		}
-
-		cursor, err := historyCollection.Aggregate(ctx, pipeline)
-		if err != nil {
-			log.Println("❌ Failed to aggregate today's plays:", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch today's biggest hits"})
+		log.Println("🔹 TopSongsByUser endpoint hit")
+		userIDInterface, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
-		defer cursor.Close(ctx)
-
-		// Parse aggregation results
-		type SongPlayCount struct {
-			SongID string `bson:"_id"`
-			Plays  int    `bson:"plays"`
-		}
-
-		var playCounts []SongPlayCount
-		if err := cursor.All(ctx, &playCounts); err != nil {
-			log.Println("❌ Failed to parse play counts:", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse results"})
-			return
-		}
-
-		// If no plays today, return empty array
-		if len(playCounts) == 0 {
-			log.Println("📊 No plays found for today")
-			c.JSON(http.StatusOK, gin.H{"songs": []models.Song{}, "message": "No plays recorded today"})
-			return
-		}
-
-		// Extract song IDs
-		songIDs := make([]string, len(playCounts))
-		playCountMap := make(map[string]int)
-		for i, pc := range playCounts {
-			songIDs[i] = pc.SongID
-			playCountMap[pc.SongID] = pc.Plays
-		}
-
-		log.Printf("🎵 Found %d songs played today\n", len(songIDs))
-
-		// Fetch full song details
+		userID := userIDInterface.(string)
 		var songs []models.Song
-		cursor2, err := songcollection.Find(ctx, bson.M{"song_id": bson.M{"$in": songIDs}})
+
+		findOptions := options.Find().
+			SetSort(bson.D{{Key: "user_play_counts." + userID, Value: -1}}).
+			SetLimit(10)
+
+		cursor, err := songcollection.Find(context.Background(), bson.M{"user_play_counts." + userID: bson.M{"$exists": true}}, findOptions)
 		if err != nil {
-			log.Println("❌ Failed to fetch song details:", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch song details"})
+			log.Println("❌ Failed to fetch songs:", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch songs"})
 			return
 		}
-		defer cursor2.Close(ctx)
 
-		if err := cursor2.All(ctx, &songs); err != nil {
+		if err = cursor.All(context.Background(), &songs); err != nil {
 			log.Println("❌ Failed to parse songs:", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse songs"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to parse songs"})
 			return
 		}
 
-		// Sort songs by today's play count (maintain the order from aggregation)
-		songMap := make(map[string]models.Song)
-		for _, song := range songs {
-			songMap[song.SongID] = song
-		}
-
-		sortedSongs := make([]models.Song, 0, len(songIDs))
-		for _, songID := range songIDs {
-			if song, exists := songMap[songID]; exists {
-				sortedSongs = append(sortedSongs, song)
-			}
-		}
-
-		log.Printf("✅ Successfully fetched %d biggest hits for today\n", len(sortedSongs))
-
-		// Include play counts for today in response
-		type SongWithTodayPlays struct {
-			models.Song
-			TodayPlays int `json:"today_plays"`
-		}
-
-		result := make([]SongWithTodayPlays, len(sortedSongs))
-		for i, song := range sortedSongs {
-			result[i] = SongWithTodayPlays{
-				Song:       song,
-				TodayPlays: playCountMap[song.SongID],
-			}
-		}
-
-		c.JSON(http.StatusOK, gin.H{"songs": result})
+		log.Printf("✅ Successfully fetched %d top songs for user %s\n", len(songs), userID)
+		c.JSON(http.StatusOK, gin.H{"songs": songs})
 	}
 }

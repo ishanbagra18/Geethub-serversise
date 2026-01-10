@@ -33,7 +33,6 @@ func main() {
 	controllers.InitMusicController()
 	controllers.InitPlaylistController()
 	controllers.InitHistoryController()
-	controllers.InitStatsController()
 	controllers.InitArtistController()
 
 	port := os.Getenv("PORT")

@@ -16,7 +16,6 @@ func MusicRoute(router *gin.Engine) {
 	router.GET("/music/topsongs", controller.MostLikedSongs())
 	router.GET("/music/saved", controller.MostSavedSongs())
 	router.GET("/music/trendingsongs", controller.TrendingSongs())
-	router.GET("/music/todayshits", controller.TodaysBiggestHits())
 
 	// PROTECTED ROUTES
 	musicGroup := router.Group("/music")
@@ -31,5 +30,6 @@ func MusicRoute(router *gin.Engine) {
 		musicGroup.GET("/punjabisongs", controller.PunjabiSongs())
 		musicGroup.GET("/hindisongs", controller.HindiSongs())
 		musicGroup.GET("/latestreleased", controller.LatestRelaseSongs())
+		musicGroup.GET("/mymostplayed", controller.TopSongsByUser())
 	}
 }

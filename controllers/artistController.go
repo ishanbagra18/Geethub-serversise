@@ -372,7 +372,7 @@ func UnfollowArtist() gin.HandlerFunc {
 	}
 }
 
-// GetFollowedArtists retrieves all artists followed by the current user
+// GetFollowedArtists retrieves all artists followed by the current user    //done
 func GetFollowedArtists() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetString("user_id")
@@ -424,7 +424,7 @@ func GetFollowedArtists() gin.HandlerFunc {
 	}
 }
 
-// CheckIfFollowing checks if the current user is following a specific artist
+// CheckIfFollowing checks if the current user is following a specific artist		//done
 func CheckIfFollowing() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		artistID := c.Param("artist_id")
@@ -492,19 +492,29 @@ func GetArtistSongs() gin.HandlerFunc {
 		}
 
 		artistName := *artist.Name
+		log.Printf("🔍 Searching for songs by artist: %s", artistName)
 
-		// 🔹 Fetch songs where artist exists in artists array
+		// 🔹 Fetch songs where artist exists in artists array or artist string
 		songCollection := database.GetCollection("ecommerce", "songs")
 
+		// Simpler approach: search for artist name as substring in both fields
+		// This handles: arrays, comma-separated strings, and single values
+		artistPattern := primitive.Regex{Pattern: artistName, Options: "i"}
+
 		filter := bson.M{
-			"artists": artistName, // ✅ MongoDB auto-matches array values
+			"$or": []bson.M{
+				{"artists": artistPattern}, // Search in artists array or string
+				{"artist": artistPattern},  // Search in artist field
+			},
 		}
+
+		log.Printf("🔍 Query filter: %+v", filter)
 
 		opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}})
 
 		cursor, err := songCollection.Find(ctx, filter, opts)
 		if err != nil {
-			log.Println("Error fetching songs:", err)
+			log.Println("❌ Error fetching songs:", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch songs"})
 			return
 		}
@@ -512,9 +522,12 @@ func GetArtistSongs() gin.HandlerFunc {
 
 		var songs []models.Song
 		if err := cursor.All(ctx, &songs); err != nil {
+			log.Println("❌ Error decoding songs:", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode songs"})
 			return
 		}
+
+		log.Printf("✅ Found %d songs for artist: %s", len(songs), artistName)
 
 		c.JSON(http.StatusOK, gin.H{
 			"artist": artistName,

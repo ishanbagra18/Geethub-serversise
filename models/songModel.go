@@ -10,6 +10,7 @@ type Song struct {
 	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
 	Title       *string            `bson:"title" json:"title" validate:"required,min=2,max=100"`
 	Artist      *string            `bson:"artist" json:"artist" validate:"required,min=2,max=100"`
+	Artists     []string           `bson:"artists,omitempty" json:"artists,omitempty"`
 	Album       *string            `bson:"album" json:"album"`
 	Info        *string            `bson:"info" json:"info"`
 	Genre       *string            `bson:"genre" json:"genre"`
