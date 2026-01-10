@@ -77,32 +77,39 @@ func CreateArtist() gin.HandlerFunc {
 		defer cancel()
 
 		var artist models.Artist
-		if err := c.BindJSON(&artist); err != nil {
+
+		if err := c.ShouldBindJSON(&artist); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		validationErr := validate.Struct(artist)
-		if validationErr != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
+		// validation
+		if err := validate.Struct(artist); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
+
+		artistCollection := database.GetCollection("ecommerce", "artists")
 
 		artist.ID = primitive.NewObjectID()
 		artist.Artist_id = artist.ID.Hex()
 		artist.FollowerCount = 0
 		artist.Followers = []string{}
+
 		now := time.Now()
 		artist.Created_at = &now
 		artist.Updated_at = &now
 
 		_, err := artistCollection.InsertOne(ctx, artist)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create artist"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
-		c.JSON(http.StatusCreated, gin.H{"message": "Artist created successfully", "artist": artist})
+		c.JSON(http.StatusCreated, gin.H{
+			"message": "Artist created successfully",
+			"artist":  artist,
+		})
 	}
 }
 
@@ -226,7 +233,6 @@ func FollowArtist() gin.HandlerFunc {
 		}
 
 		// ✅ Convert to string safely (works for ObjectID or string)
-		// this was the main error in the previous one
 		userID := fmt.Sprint(uid)
 
 		artistID := c.Param("artist_id")
@@ -458,29 +464,62 @@ func CheckIfFollowing() gin.HandlerFunc {
 // GetArtistSongs retrieves all songs by a specific artist
 func GetArtistSongs() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		artistName := c.Param("artist_id")
+		artistID := c.Param("artist_id")
+
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
+		artistCollection := database.GetCollection("ecommerce", "artists")
+
+		// 🔹 Fetch artist
+		var artist models.Artist
+		err := artistCollection.FindOne(ctx, bson.M{
+			"artist_id": artistID,
+		}).Decode(&artist)
+
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Artist not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch artist"})
+			return
+		}
+
+		if artist.Name == nil || *artist.Name == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Artist name is empty"})
+			return
+		}
+
+		artistName := *artist.Name
+
+		// 🔹 Fetch songs where artist exists in artists array
 		songCollection := database.GetCollection("ecommerce", "songs")
 
-		// Find songs where artist field matches
-		filter := bson.M{"artist": artistName}
+		filter := bson.M{
+			"artists": artistName, // ✅ MongoDB auto-matches array values
+		}
+
 		opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}})
 
 		cursor, err := songCollection.Find(ctx, filter, opts)
 		if err != nil {
+			log.Println("Error fetching songs:", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch songs"})
 			return
 		}
 		defer cursor.Close(ctx)
 
 		var songs []models.Song
-		if err = cursor.All(ctx, &songs); err != nil {
+		if err := cursor.All(ctx, &songs); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode songs"})
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"songs": songs, "count": len(songs)})
+		c.JSON(http.StatusOK, gin.H{
+			"artist": artistName,
+			"count":  len(songs),
+			"songs":  songs,
+		})
 	}
 }
