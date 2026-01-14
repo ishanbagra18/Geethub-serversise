@@ -63,6 +63,7 @@ func main() {
 	routes.HistoryRoutes(router)
 	routes.StatsRoutes(router)
 	routes.ArtistRoutes(router)
+	routes.MessageRoutes(router)
 	log.Println("✅ [main] Routes registered")
 
 	router.GET("/api-1", func(c *gin.Context) {

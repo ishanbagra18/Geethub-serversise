@@ -679,7 +679,7 @@ func LatestRelaseSongs() gin.HandlerFunc {
 	}
 }
 
-func TopSongsByUser() gin.HandlerFunc { 
+func TopSongsByUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		log.Println("🔹 TopSongsByUser endpoint hit")
 		userIDInterface, exists := c.Get("user_id")
@@ -710,4 +710,52 @@ func TopSongsByUser() gin.HandlerFunc {
 		log.Printf("✅ Successfully fetched %d top songs for user %s\n", len(songs), userID)
 		c.JSON(http.StatusOK, gin.H{"songs": songs})
 	}
+}
+
+func AutocompleteSearch(c *gin.Context) {
+	query := strings.TrimSpace(c.Query("q"))
+
+	if query == "" {
+		c.JSON(http.StatusOK, gin.H{"suggestions": []models.Song{}})
+		return
+	}
+
+	log.Printf("🔍 Autocomplete search for: %q\n", query)
+
+	// Escape special regex characters
+	escapedQuery := regexp.QuoteMeta(query)
+
+	// Search across title, artist, album, and genre fields
+	filter := bson.M{
+		"$or": []bson.M{
+			{"title": bson.M{"$regex": escapedQuery, "$options": "i"}},
+			{"artist": bson.M{"$regex": escapedQuery, "$options": "i"}},
+			{"album": bson.M{"$regex": escapedQuery, "$options": "i"}},
+			{"genre": bson.M{"$regex": escapedQuery, "$options": "i"}},
+		},
+	}
+
+	var songs []models.Song
+	findOptions := options.Find().SetLimit(10) // Limit to 10 suggestions
+
+	cursor, err := songcollection.Find(context.Background(), filter, findOptions)
+	if err != nil {
+		log.Println("❌ Failed to fetch suggestions:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch suggestions"})
+		return
+	}
+	defer cursor.Close(context.Background())
+
+	if err := cursor.All(context.Background(), &songs); err != nil {
+		log.Println("❌ Failed to parse suggestions:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse suggestions"})
+		return
+	}
+
+	if songs == nil {
+		songs = []models.Song{}
+	}
+
+	log.Printf("✅ Found %d suggestions\n", len(songs))
+	c.JSON(http.StatusOK, gin.H{"suggestions": songs})
 }

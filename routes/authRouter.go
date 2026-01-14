@@ -20,5 +20,7 @@ func AuthRoute(router *gin.Engine) {
 		authGroup.PUT("/updateprofile/:user_id", controller.UpdateProfile())
 		authGroup.GET("/myprofile/:user_id", controller.MyProfile())
 		authGroup.POST("/logout", controller.Logout())
+		authGroup.GET("/allusers", controller.GetUsers())
+		authGroup.GET("/messagingusers", controller.GetAllUsersForMessaging())
 	}
 }

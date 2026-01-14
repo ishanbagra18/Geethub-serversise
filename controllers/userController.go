@@ -456,3 +456,38 @@ func GetUser() gin.HandlerFunc {
 		c.JSON(http.StatusOK, user)
 	}
 }
+
+// GetAllUsersForMessaging - Get all users for messaging (no admin required)
+func GetAllUsersForMessaging() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
+
+		// Find all users, but only return basic info (no sensitive data)
+		cursor, err := usercollection.Find(ctx, bson.M{})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching users"})
+			return
+		}
+		defer cursor.Close(ctx)
+
+		var users []bson.M
+		if err = cursor.All(ctx, &users); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error decoding users"})
+			return
+		}
+
+		// Return only necessary fields for messaging
+		var filteredUsers []gin.H
+		for _, user := range users {
+			filteredUsers = append(filteredUsers, gin.H{
+				"user_id":    user["user_id"],
+				"first_name": user["first_name"],
+				"last_name":  user["last_name"],
+				"email":      user["email"],
+			})
+		}
+
+		c.JSON(http.StatusOK, filteredUsers)
+	}
+}

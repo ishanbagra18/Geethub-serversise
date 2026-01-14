@@ -12,6 +12,7 @@ func MusicRoute(router *gin.Engine) {
 
 	router.GET("/allsongs", controller.GetAllSongs)
 	router.GET("/music/searchsong", controller.SearchSongs)
+	router.GET("/music/autocomplete", controller.AutocompleteSearch)
 	router.GET("/music/allsongs", controller.GetAllSongs)
 	router.GET("/music/topsongs", controller.MostLikedSongs())
 	router.GET("/music/saved", controller.MostSavedSongs())
