@@ -712,6 +712,12 @@ func TopSongsByUser() gin.HandlerFunc {
 	}
 }
 
+
+// this thing to be checked 
+
+
+
+
 func AutocompleteSearch(c *gin.Context) {
 	query := strings.TrimSpace(c.Query("q"))
 
