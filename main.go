@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 	"os"
-
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -18,11 +18,7 @@ import (
 func main() {
 	log.Println("🔍 [main] Starting application...")
 
-	err := godotenv.Load(".env")
-	if err != nil {
-		log.Fatal("❌ [main] Error loading .env file")
-	}
-	log.Println("✅ [main] .env file loaded successfully")
+	_ = godotenv.Load(".env")
 
 	log.Println("🔍 [main] Initializing MongoDB...")
 	database.InitDB()
@@ -41,11 +37,30 @@ func main() {
 	}
 	log.Printf("🔍 [main] Using port: %s\n", port)
 
+	// Get CORS origins from environment variable and split by comma
+	corsOriginsStr := os.Getenv("CORS_ORIGINS")
+	var corsOrigins []string
+
+	if corsOriginsStr == "" {
+		corsOrigins = []string{"http://localhost:5173"}
+		log.Println("⚠️  [main] CORS_ORIGINS not set, using default: http://localhost:5173")
+	} else {
+		// Split by comma and trim whitespace from each origin
+		origins := strings.Split(corsOriginsStr, ",")
+		for _, origin := range origins {
+			trimmed := strings.TrimSpace(origin)
+			if trimmed != "" {
+				corsOrigins = append(corsOrigins, trimmed)
+			}
+		}
+		log.Printf("🔍 [main] CORS Origins configured: %v\n", corsOrigins)
+	}
+
 	router := gin.New()
 	router.Use(gin.Logger())
 
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173"},
+		AllowOrigins:     corsOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},

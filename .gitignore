@@ -1,5 +1,37 @@
-# ignore environment files
+# Environment variables
 .env
+.env.local
+.env.production
 backend/.env
+
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+app
+main
+
+# Test binaries
+*.test
+
+# Output of go build
+/bin/
+/pkg/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go workspace file
+go.work
+
+# Other directories
 ../frontend
 ../docs

@@ -150,7 +150,7 @@ func UpdateArtist() gin.HandlerFunc {
 			updateData["bio"] = updateArtist.Bio
 		}
 
-		if updateArtist.Genre != nil && len(updateArtist.Genre) > 0 {
+		if len(updateArtist.Genre) > 0 {
 			updateData["genre"] = updateArtist.Genre
 		}
 
