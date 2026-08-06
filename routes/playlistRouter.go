@@ -22,6 +22,9 @@ func PlaylistRoute(router *gin.Engine) {
         playlistGroup.PUT("/update/:id", controller.UpdatePlaylist())
 		playlistGroup.POST("/:id/addsong", controller.AddSongToPlaylist())
         
+        playlistGroup.POST("/:id/save", controller.SavePlaylist())
+        playlistGroup.GET("/savedplaylists", controller.GetSavedPlaylists())
+        
         // FIXED: Removed redundant "/playlist" prefix. 
         // Full URL: DELETE http://localhost:9000/playlist/:id/remove-song
         playlistGroup.DELETE("/:id/remove-song", controller.RemoveSongFromPlaylist())

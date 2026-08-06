@@ -765,3 +765,9 @@ func AutocompleteSearch(c *gin.Context) {
 	log.Printf("✅ Found %d suggestions\n", len(songs))
 	c.JSON(http.StatusOK, gin.H{"suggestions": songs})
 }
+
+func strPtr(s string) *string {
+	return &s
+}
+
+

@@ -2,7 +2,9 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 	"log"
 
@@ -14,7 +16,6 @@ import (
 	"github.com/ishanbagra18/ecommerce-using-go/database"
 	"github.com/ishanbagra18/ecommerce-using-go/models"	
 	"github.com/ishanbagra18/ecommerce-using-go/helpers"
-
 )
 
 var playlistCollection *mongo.Collection
@@ -46,13 +47,11 @@ func GetPlaylistByID() gin.HandlerFunc {
 			return
 		}
 
-		// Check if playlist is public or belongs to user
-		userID, exists := c.Get("user_id")
-		if !playlist.IsPublic {
-			if !exists || (playlist.CreatorID != nil && *playlist.CreatorID != userID.(string)) {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
-				return
-			}
+		// Check access: public or authenticated user with direct link
+		_, exists := c.Get("user_id")
+		if !playlist.IsPublic && !exists {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied. Please log in to view this playlist."})
+			return
 		}
 
 		c.JSON(http.StatusOK, gin.H{"playlist": playlist})
@@ -90,7 +89,21 @@ func CreatePlaylist() gin.HandlerFunc {
 		description := c.PostForm("description")
 		playlistType := c.PostForm("type") // "user" or "system"
 
+		isPublicStr := c.PostForm("is_public")
+		isPublic := true
+		if isPublicStr == "false" || isPublicStr == "0" {
+			isPublic = false
+		}
+
 		tags := c.PostFormArray("tags")       // optional
+		tagsStr := c.PostForm("tags")
+		if tagsStr != "" && strings.HasPrefix(tagsStr, "[") {
+			var parsedTags []string
+			if err := json.Unmarshal([]byte(tagsStr), &parsedTags); err == nil {
+				tags = parsedTags
+			}
+		}
+
 		songIDs := c.PostFormArray("song_ids") // optional
 
 		// ---------- Manual validation ----------
@@ -151,7 +164,7 @@ func CreatePlaylist() gin.HandlerFunc {
 			Type:        models.PlaylistType(playlistType),
 			Tags:        tags,
 			SongIDs:     songIDs,
-			IsPublic:    true,
+			IsPublic:    isPublic,
 			PlayCount:   0,
 			CreatedAt:  now,
 			UpdatedAt:  now,
@@ -254,8 +267,10 @@ func GetMyPlaylists() gin.HandlerFunc {
 
 		uid := userID.(string)
 		filter := bson.M{
-			"creator_id": uid,
-			"type":       models.PlaylistTypeUser,
+			"$or": []bson.M{
+				{"creator_id": uid, "type": models.PlaylistTypeUser},
+				{"saved_by": uid},
+			},
 		}
 
 		cursor, err := playlistCollection.Find(context.TODO(), filter)
@@ -272,6 +287,111 @@ func GetMyPlaylists() gin.HandlerFunc {
 		}
 
 		// Return empty array if no playlists found
+		if playlists == nil {
+			playlists = []models.Playlist{}
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"playlists": playlists,
+			"count":     len(playlists),
+		})
+	}
+}
+
+// -------------------- SAVE / UNSAVE PLAYLIST --------------------
+func SavePlaylist() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		playlistID := c.Param("id")
+		userID, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+
+		objID, err := primitive.ObjectIDFromHex(playlistID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid playlist ID"})
+			return
+		}
+
+		var playlist models.Playlist
+		err = playlistCollection.FindOne(context.TODO(), bson.M{"_id": objID}).Decode(&playlist)
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Playlist not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error fetching playlist"})
+			return
+		}
+
+		uid := userID.(string)
+		isSaved := false
+		for _, savedUid := range playlist.SavedBy {
+			if savedUid == uid {
+				isSaved = true
+				break
+			}
+		}
+
+		var update bson.M
+		if isSaved {
+			update = bson.M{
+				"$pull": bson.M{"saved_by": uid},
+				"$set":  bson.M{"updated_at": time.Now()},
+			}
+		} else {
+			update = bson.M{
+				"$addToSet": bson.M{"saved_by": uid},
+				"$set":      bson.M{"updated_at": time.Now()},
+			}
+		}
+
+		_, err = playlistCollection.UpdateOne(context.TODO(), bson.M{"_id": objID}, update)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update playlist save status"})
+			return
+		}
+
+		action := "saved"
+		if isSaved {
+			action = "unsaved"
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"message":  "Playlist " + action + " successfully",
+			"is_saved": !isSaved,
+		})
+	}
+}
+
+// -------------------- GET SAVED PLAYLISTS --------------------
+func GetSavedPlaylists() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+
+		uid := userID.(string)
+		filter := bson.M{
+			"saved_by": uid,
+		}
+
+		cursor, err := playlistCollection.Find(context.TODO(), filter)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error fetching saved playlists"})
+			return
+		}
+		defer cursor.Close(context.TODO())
+
+		var playlists []models.Playlist
+		if err := cursor.All(context.TODO(), &playlists); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
 		if playlists == nil {
 			playlists = []models.Playlist{}
 		}

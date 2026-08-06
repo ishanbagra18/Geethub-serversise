@@ -232,6 +232,10 @@ func UpdateProfile() gin.HandlerFunc {
 			updateObj["phone"] = user.Phone
 		}
 
+		if user.Emoji != nil {
+			updateObj["emoji"] = user.Emoji
+		}
+
 		updateObj["updated_at"] = time.Now()
 
 		filter := bson.M{"user_id": userId}
@@ -485,6 +489,7 @@ func GetAllUsersForMessaging() gin.HandlerFunc {
 				"first_name": user["first_name"],
 				"last_name":  user["last_name"],
 				"email":      user["email"],
+				"emoji":      user["emoji"],
 			})
 		}
 

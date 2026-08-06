@@ -18,6 +18,7 @@ func MusicRoute(router *gin.Engine) {
 	router.GET("/music/saved", controller.MostSavedSongs())
 	router.GET("/music/trendingsongs", controller.TrendingSongs())
 
+
 	// PROTECTED ROUTES
 	musicGroup := router.Group("/music")
 	musicGroup.Use(middleware.Authentication())

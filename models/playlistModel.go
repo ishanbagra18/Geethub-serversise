@@ -25,6 +25,7 @@ type Playlist struct {
 	IsPublic    bool               `bson:"is_public" json:"is_public"`
 	IsSeeded    bool               `bson:"is_seeded,omitempty" json:"is_seeded,omitempty"`
 	PlayCount   int64              `bson:"play_count,omitempty" json:"play_count,omitempty"`
+	SavedBy     []string           `bson:"saved_by,omitempty" json:"saved_by,omitempty"`
 	CreatedAt   time.Time          `bson:"created_at" json:"created_at"`
 	UpdatedAt   time.Time          `bson:"updated_at" json:"updated_at"`
 }

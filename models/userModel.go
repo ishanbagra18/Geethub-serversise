@@ -19,5 +19,6 @@ type User struct {
 	Created_at      *time.Time         `json:"created_at"`
 	Updated_at      *time.Time         `json:"updated_at"`
 	User_id         string             `json:"user_id"`
+	Emoji           *string            `bson:"emoji,omitempty" json:"emoji,omitempty"`
 	FollowedArtists []string           `bson:"followed_artists,omitempty" json:"followed_artists,omitempty"`
 }
