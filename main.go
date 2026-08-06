@@ -30,6 +30,8 @@ func main() {
 	controllers.InitPlaylistController()
 	controllers.InitHistoryController()
 	controllers.InitArtistController()
+	controllers.InitCommentController()
+	controllers.InitBadgeController()
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -79,6 +81,9 @@ func main() {
 	routes.StatsRoutes(router)
 	routes.ArtistRoutes(router)
 	routes.MessageRoutes(router)
+	routes.PartyRoutes(router)
+	routes.CommentRoutes(router)
+	routes.BadgeRoutes(router)
 	log.Println("✅ [main] Routes registered")
 
 	router.GET("/api-1", func(c *gin.Context) {
