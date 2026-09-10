@@ -378,24 +378,34 @@ func MostLikedSongs() gin.HandlerFunc {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		var songs []models.Song
+		pipeline := mongo.Pipeline{
+			bson.D{{Key: "$addFields", Value: bson.M{
+				"likes_count": bson.M{"$size": bson.M{"$ifNull": bson.A{"$likes", bson.A{}}}},
+			}}},
+			bson.D{{Key: "$sort", Value: bson.D{
+				{Key: "likes_count", Value: -1},
+				{Key: "created_at", Value: -1},
+			}}},
+			bson.D{{Key: "$limit", Value: 20}},
+		}
 
-		findOptions := options.Find().
-			SetSort(bson.D{{Key: "likes", Value: -1}}). // Sort: highest likes first
-			SetLimit(10)                                // Limit: top 10
-
-		cursor, err := songcollection.Find(ctx, bson.M{}, findOptions)
+		cursor, err := songcollection.Aggregate(ctx, pipeline)
 		if err != nil {
-			log.Println("❌ Failed to fetch songs:", err)
+			log.Println("❌ Failed to fetch most liked songs:", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch songs"})
 			return
 		}
 		defer cursor.Close(ctx)
 
+		var songs []models.Song
 		if err := cursor.All(ctx, &songs); err != nil {
-			log.Println("❌ Failed to parse songs:", err)
+			log.Println("❌ Failed to parse most liked songs:", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse songs"})
 			return
+		}
+
+		if songs == nil {
+			songs = []models.Song{}
 		}
 
 		log.Printf("✅ Successfully fetched %d most liked songs\n", len(songs))
@@ -406,26 +416,40 @@ func MostLikedSongs() gin.HandlerFunc {
 func MostSavedSongs() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		log.Println("🔹 MostSavedSongs endpoint hit")
+
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		var songs []models.Song
 
-		findOptions := options.Find().
-			SetSort(bson.D{{Key: "saves", Value: -1}}). // Sort: highest saves first
-			SetLimit(10)                                // Limit: top 10
-		cursor, err := songcollection.Find(ctx, bson.M{}, findOptions)
+		pipeline := mongo.Pipeline{
+			bson.D{{Key: "$addFields", Value: bson.M{
+				"saves_count": bson.M{"$size": bson.M{"$ifNull": bson.A{"$saves", bson.A{}}}},
+			}}},
+			bson.D{{Key: "$sort", Value: bson.D{
+				{Key: "saves_count", Value: -1},
+				{Key: "created_at", Value: -1},
+			}}},
+			bson.D{{Key: "$limit", Value: 20}},
+		}
+
+		cursor, err := songcollection.Aggregate(ctx, pipeline)
 		if err != nil {
-			log.Println("❌ Failed to fetch songs:", err)
+			log.Println("❌ Failed to fetch most saved songs:", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch songs"})
 			return
 		}
 		defer cursor.Close(ctx)
 
+		var songs []models.Song
 		if err := cursor.All(ctx, &songs); err != nil {
-			log.Println("❌ Failed to parse songs:", err)
+			log.Println("❌ Failed to parse most saved songs:", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse songs"})
 			return
 		}
+
+		if songs == nil {
+			songs = []models.Song{}
+		}
+
 		log.Printf("✅ Successfully fetched %d most saved songs\n", len(songs))
 		c.JSON(http.StatusOK, gin.H{"songs": songs})
 	}
@@ -433,49 +457,52 @@ func MostSavedSongs() gin.HandlerFunc {
 
 func SearchSongs(c *gin.Context) {
 	search := strings.TrimSpace(c.Query("q"))
-	searchType := strings.TrimSpace(c.Query("type")) // title | artist | genre | info
+	searchType := strings.TrimSpace(c.Query("type")) // title | artist | genre | info | all
 
 	if search == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "query parameter 'q' is required"})
 		return
 	}
 
-	if searchType == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "query parameter 'type' is required (title, artist, genre, info)"})
-		return
-	}
-
-	// Allowed searchable fields
-	validTypes := map[string]string{
-		"title":  "title",
-		"artist": "artist",
-		"genre":  "genre",
-		"info":   "info",
-	}
-
-	field, ok := validTypes[strings.ToLower(searchType)]
-	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "invalid type, use one of: title | artist | genre | info",
-		})
-		return
-	}
-
-	// Multi-word AND filtering
 	parts := strings.Fields(search)
-	andFilters := make([]bson.M, 0, len(parts))
+	var filter bson.M
 
-	for _, p := range parts {
-		esc := regexp.QuoteMeta(p)
-		andFilters = append(andFilters, bson.M{
-			field: bson.M{
-				"$regex":   esc,
-				"$options": "i",
-			},
-		})
+	if searchType != "" && searchType != "all" {
+		validTypes := map[string]string{
+			"title":  "title",
+			"artist": "artist",
+			"genre":  "genre",
+			"info":   "info",
+		}
+		field, ok := validTypes[strings.ToLower(searchType)]
+		if ok {
+			var andFilters []bson.M
+			for _, p := range parts {
+				esc := regexp.QuoteMeta(p)
+				andFilters = append(andFilters, bson.M{
+					field: bson.M{"$regex": esc, "$options": "i"},
+				})
+			}
+			filter = bson.M{"$and": andFilters}
+		}
 	}
 
-	filter := bson.M{"$and": andFilters}
+	// Default Semantic Multi-Field Search Across All Metadata
+	if filter == nil {
+		var orFilters []bson.M
+		for _, p := range parts {
+			esc := regexp.QuoteMeta(p)
+			orFilters = append(orFilters,
+				bson.M{"title": bson.M{"$regex": esc, "$options": "i"}},
+				bson.M{"artist": bson.M{"$regex": esc, "$options": "i"}},
+				bson.M{"album": bson.M{"$regex": esc, "$options": "i"}},
+				bson.M{"genre": bson.M{"$regex": esc, "$options": "i"}},
+				bson.M{"language": bson.M{"$regex": esc, "$options": "i"}},
+				bson.M{"info": bson.M{"$regex": esc, "$options": "i"}},
+			)
+		}
+		filter = bson.M{"$or": orFilters}
+	}
 
 	var songs []models.Song
 
@@ -575,23 +602,52 @@ func MysavedSongs() gin.HandlerFunc {
 
 func TrendingSongs() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var songs []models.Song
+		log.Println("🔹 TrendingSongs endpoint hit")
 
-		opts := options.Find().
-			SetSort(bson.D{{Key: "play_count", Value: -1}}).
-			SetLimit(10)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
 
-		cursor, err := songcollection.Find(context.Background(), bson.M{}, opts)
+		pipeline := mongo.Pipeline{
+			bson.D{{Key: "$addFields", Value: bson.M{
+				"likes_count":    bson.M{"$size": bson.M{"$ifNull": bson.A{"$likes", bson.A{}}}},
+				"saves_count":    bson.M{"$size": bson.M{"$ifNull": bson.A{"$saves", bson.A{}}}},
+				"play_count_val": bson.M{"$ifNull": bson.A{"$play_count", 0}},
+			}}},
+			bson.D{{Key: "$addFields", Value: bson.M{
+				"trending_score": bson.M{"$add": bson.A{
+					"$play_count_val",
+					bson.M{"$multiply": bson.A{"$likes_count", 3}},
+					bson.M{"$multiply": bson.A{"$saves_count", 5}},
+				}},
+			}}},
+			bson.D{{Key: "$sort", Value: bson.D{
+				{Key: "trending_score", Value: -1},
+				{Key: "play_count", Value: -1},
+				{Key: "created_at", Value: -1},
+			}}},
+			bson.D{{Key: "$limit", Value: 50}},
+		}
+
+		cursor, err := songcollection.Aggregate(ctx, pipeline)
 		if err != nil {
+			log.Println("❌ Failed to fetch trending songs aggregation:", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch trending songs"})
 			return
 		}
+		defer cursor.Close(ctx)
 
-		if err := cursor.All(context.Background(), &songs); err != nil {
+		var songs []models.Song
+		if err := cursor.All(ctx, &songs); err != nil {
+			log.Println("❌ Failed to parse trending songs:", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to parse songs"})
 			return
 		}
 
+		if songs == nil {
+			songs = []models.Song{}
+		}
+
+		log.Printf("✅ Successfully fetched %d trending songs\n", len(songs))
 		c.JSON(http.StatusOK, gin.H{"songs": songs})
 	}
 }
