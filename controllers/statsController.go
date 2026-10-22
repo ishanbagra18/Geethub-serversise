@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -130,8 +131,20 @@ func GetMyListeningStats() gin.HandlerFunc {
 						songID := song["song_id"].(string)
 						plays := songPlayCounts[songID]
 
-						if artist, ok := song["artist"].(string); ok && artist != "" {
-							artistPlayCounts[artist] += plays
+						if artistStr, ok := song["artist"].(string); ok && artistStr != "" {
+							// Split multiple artists separated by commas or ampersands
+							artistsList := strings.FieldsFunc(artistStr, func(r rune) bool {
+								return r == ',' || r == '&'
+							})
+							if len(artistsList) == 0 {
+								artistsList = []string{artistStr}
+							}
+							for _, a := range artistsList {
+								canonical := CanonicalizeArtistName(a)
+								if canonical != "" {
+									artistPlayCounts[canonical] += plays
+								}
+							}
 						}
 					}
 				}

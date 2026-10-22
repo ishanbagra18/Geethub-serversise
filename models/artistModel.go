@@ -9,6 +9,7 @@ import (
 type Artist struct {
 	ID            primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
 	Name          *string            `bson:"name" json:"name" validate:"required,min=2,max=100"`
+	Aliases       []string           `bson:"aliases,omitempty" json:"aliases,omitempty"`
 	Bio           *string            `bson:"bio" json:"bio"`
 	Genre         []string           `bson:"genre" json:"genre"`
 	ImageURL      *string            `bson:"image_url,omitempty" json:"image_url,omitempty"`

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -25,14 +27,161 @@ func InitArtistController() {
 	log.Println("✅ [InitArtistController] Artist collection initialized")
 }
 
-// GetAllArtists retrieves all artists with pagination					//done
+// Known bidirectional alias mappings for common artists
+var knownArtistAliases = map[string][]string{
+	"honey singh":            {"yo yo honey singh", "yoyo honey singh", "honey singh"},
+	"yo yo honey singh":      {"honey singh", "yoyo honey singh", "yo yo honey singh"},
+	"yoyo honey singh":       {"honey singh", "yo yo honey singh", "yoyo honey singh"},
+	"arijit singh":           {"arijit singh", "arijit"},
+	"ap dhillon":             {"ap dhillon", "amritpal singh dhillon", "dhillon"},
+	"amritpal singh dhillon": {"ap dhillon", "amritpal singh dhillon"},
+	"sidhu moose wala":       {"sidhu moose wala", "sidhu moosewala", "sidhu"},
+	"sidhu moosewala":        {"sidhu moose wala", "sidhu moosewala", "sidhu"},
+	"karan aujla":            {"karan aujla", "aujla"},
+	"dhanda nyoliwala":       {"dhanda nyoliwala", "dhanda", "nyoliwala"},
+	"mc stan":                {"mc stan", "stan"},
+	"diljit dosanjh":         {"diljit dosanjh", "diljit"},
+	"badshah":                {"badshah"},
+	"shashwat sachdev":       {"shashwat sachdev", "shashwat"},
+	"sachet tandon":          {"sachet tandon", "sachet"},
+}
+
+// CanonicalArtistMap maps variations or nicknames to the primary official artist name
+var CanonicalArtistMap = map[string]string{
+	"honey singh":            "Yo Yo Honey Singh",
+	"yo yo honey singh":      "Yo Yo Honey Singh",
+	"yoyo honey singh":       "Yo Yo Honey Singh",
+	"arijit singh":           "Arijit Singh",
+	"arijit":                 "Arijit Singh",
+	"ap dhillon":             "AP Dhillon",
+	"amritpal singh dhillon": "AP Dhillon",
+	"sidhu moose wala":       "Sidhu Moose Wala",
+	"sidhu moosewala":        "Sidhu Moose Wala",
+	"karan aujla":            "Karan Aujla",
+	"aujla":                  "Karan Aujla",
+	"dhanda nyoliwala":       "Dhanda Nyoliwala",
+	"mc stan":                "MC Stan",
+	"diljit dosanjh":         "Diljit Dosanjh",
+	"badshah":                "Badshah",
+	"shashwat sachdev":       "Shashwat Sachdev",
+	"sachet tandon":          "Sachet Tandon",
+	"vishal dadlani":         "Vishal Dadlani",
+	"simran choudhary":       "Simran Choudhary",
+	"hanumankind":            "Hanumankind",
+	"nikhita gandhi":         "Nikhita Gandhi",
+}
+
+// CanonicalizeArtistName returns the official primary artist name for a given alias or raw artist string
+func CanonicalizeArtistName(name string) string {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return ""
+	}
+	if canonical, exists := CanonicalArtistMap[strings.ToLower(trimmed)]; exists {
+		return canonical
+	}
+	return trimmed
+}
+
+// Common artist prefixes to strip/expand
+var prefixPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)^(yo\s*yo|yoyo)\s+`),
+	regexp.MustCompile(`(?i)^mc\s+`),
+	regexp.MustCompile(`(?i)^dj\s+`),
+	regexp.MustCompile(`(?i)^dr\.?\s+`),
+	regexp.MustCompile(`(?i)^the\s+`),
+	regexp.MustCompile(`(?i)^ustad\s+`),
+	regexp.MustCompile(`(?i)^pt\.?\s+`),
+	regexp.MustCompile(`(?i)^pandit\s+`),
+}
+
+// GetArtistAliases generates all known and algorithmic variations of an artist's name
+func GetArtistAliases(artistName string, explicitAliases []string) []string {
+	cleanName := strings.TrimSpace(artistName)
+	if cleanName == "" {
+		return nil
+	}
+
+	aliasMap := make(map[string]bool)
+	var result []string
+
+	addAlias := func(alias string) {
+		trimmed := strings.TrimSpace(alias)
+		low := strings.ToLower(trimmed)
+		if trimmed != "" && len(trimmed) >= 3 && !aliasMap[low] {
+			aliasMap[low] = true
+			result = append(result, trimmed)
+		}
+	}
+
+	// 1. Add primary name
+	addAlias(cleanName)
+
+	// 2. Add explicit aliases stored in artist document
+	for _, ea := range explicitAliases {
+		addAlias(ea)
+	}
+
+	// 3. Check known dictionary (case-insensitive)
+	lowerName := strings.ToLower(cleanName)
+	if known, exists := knownArtistAliases[lowerName]; exists {
+		for _, k := range known {
+			addAlias(k)
+		}
+	}
+
+	// 4. Algorithmic prefix stripping (e.g. "Yo Yo Honey Singh" -> "Honey Singh")
+	for _, re := range prefixPatterns {
+		if re.MatchString(cleanName) {
+			stripped := strings.TrimSpace(re.ReplaceAllString(cleanName, ""))
+			if len(stripped) >= 3 {
+				addAlias(stripped)
+				if known, exists := knownArtistAliases[strings.ToLower(stripped)]; exists {
+					for _, k := range known {
+						addAlias(k)
+					}
+				}
+			}
+		}
+	}
+
+	// 5. Reverse prefix matching: e.g. "Honey Singh" -> "Yo Yo Honey Singh"
+	if strings.EqualFold(cleanName, "honey singh") {
+		addAlias("Yo Yo Honey Singh")
+		addAlias("Yoyo Honey Singh")
+	}
+
+	return result
+}
+
+// GetAllArtists retrieves all artists with optional search by name/alias
 func GetAllArtists() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
+		nameQuery := strings.TrimSpace(c.Query("name"))
+		if nameQuery == "" {
+			nameQuery = strings.TrimSpace(c.Query("q"))
+		}
+
+		filter := bson.M{}
+		if nameQuery != "" {
+			aliases := GetArtistAliases(nameQuery, nil)
+			var orFilters []bson.M
+			for _, a := range aliases {
+				esc := regexp.QuoteMeta(a)
+				pattern := primitive.Regex{Pattern: esc, Options: "i"}
+				orFilters = append(orFilters,
+					bson.M{"name": pattern},
+					bson.M{"aliases": pattern},
+				)
+			}
+			filter = bson.M{"$or": orFilters}
+		}
+
 		var artists []models.Artist
-		cursor, err := artistCollection.Find(ctx, bson.M{})
+		cursor, err := artistCollection.Find(ctx, filter)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch artists"})
 			return
@@ -152,6 +301,10 @@ func UpdateArtist() gin.HandlerFunc {
 
 		if len(updateArtist.Genre) > 0 {
 			updateData["genre"] = updateArtist.Genre
+		}
+
+		if len(updateArtist.Aliases) > 0 {
+			updateData["aliases"] = updateArtist.Aliases
 		}
 
 		if updateArtist.ImageURL != nil {
@@ -494,20 +647,27 @@ func GetArtistSongs() gin.HandlerFunc {
 		artistName := *artist.Name
 		log.Printf("🔍 Searching for songs by artist: %s", artistName)
 
-		// 🔹 Fetch songs where artist exists in artists array or artist string
+		// 🔹 Retrieve all aliases & variations for artist (e.g. "Honey Singh" for "Yo Yo Honey Singh")
+		aliases := GetArtistAliases(artistName, artist.Aliases)
+		log.Printf("🔍 Using aliases for %s: %v", artistName, aliases)
+
+		// 🔹 Fetch songs where artist or artists matches any alias
 		songCollection := database.GetCollection("ecommerce", "songs")
 
-		// Simpler approach: search for artist name as substring in both fields
-		// This handles: arrays, comma-separated strings, and single values
-		artistPattern := primitive.Regex{Pattern: artistName, Options: "i"}
-
-		filter := bson.M{
-			"$or": []bson.M{
-				{"artists": artistPattern}, // Search in artists array or string
-				{"artist": artistPattern},  // Search in artist field
-			},
+		var orConditions []bson.M
+		for _, alias := range aliases {
+			esc := regexp.QuoteMeta(strings.TrimSpace(alias))
+			if esc == "" {
+				continue
+			}
+			pattern := primitive.Regex{Pattern: esc, Options: "i"}
+			orConditions = append(orConditions,
+				bson.M{"artists": pattern},
+				bson.M{"artist": pattern},
+			)
 		}
 
+		filter := bson.M{"$or": orConditions}
 		log.Printf("🔍 Query filter: %+v", filter)
 
 		opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}})
@@ -530,9 +690,10 @@ func GetArtistSongs() gin.HandlerFunc {
 		log.Printf("✅ Found %d songs for artist: %s", len(songs), artistName)
 
 		c.JSON(http.StatusOK, gin.H{
-			"artist": artistName,
-			"count":  len(songs),
-			"songs":  songs,
+			"artist":  artistName,
+			"aliases": aliases,
+			"count":   len(songs),
+			"songs":   songs,
 		})
 	}
 }

@@ -501,6 +501,14 @@ func SearchSongs(c *gin.Context) {
 				bson.M{"info": bson.M{"$regex": esc, "$options": "i"}},
 			)
 		}
+		// Also expand with artist aliases (e.g. "Yo Yo Honey Singh" -> "Honey Singh")
+		for _, alias := range GetArtistAliases(search, nil) {
+			esc := regexp.QuoteMeta(alias)
+			orFilters = append(orFilters,
+				bson.M{"artist": bson.M{"$regex": esc, "$options": "i"}},
+				bson.M{"artists": bson.M{"$regex": esc, "$options": "i"}},
+			)
+		}
 		filter = bson.M{"$or": orFilters}
 	}
 
