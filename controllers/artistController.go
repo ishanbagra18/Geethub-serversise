@@ -95,7 +95,7 @@ var prefixPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)^pandit\s+`),
 }
 
-// GetArtistAliases generates all known and algorithmic variations of an artist's name
+// GetArtistAliases - get artist by alias matching with names
 func GetArtistAliases(artistName string, explicitAliases []string) []string {
 	cleanName := strings.TrimSpace(artistName)
 	if cleanName == "" {
