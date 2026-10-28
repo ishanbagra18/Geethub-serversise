@@ -35,6 +35,7 @@ func main() {
 	controllers.InitBadgeController()
 	controllers.InitMoodController()
 	controllers.InitRecommendationController()
+	controllers.InitCopilotController()
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -92,6 +93,7 @@ func main() {
 	routes.BadgeRoutes(router)
 	routes.MoodRoutes(router)
 	routes.RecommendationRoutes(router)
+	routes.CopilotRoutes(router)
 	log.Println("✅ [main] Routes registered")
 
 	router.GET("/api-1", func(c *gin.Context) {
