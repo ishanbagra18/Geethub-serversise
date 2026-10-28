@@ -94,7 +94,6 @@ func main() {
 	routes.MoodRoutes(router)
 	routes.RecommendationRoutes(router)
 	routes.CopilotRoutes(router)
-	routes.JamendoRoutes(router)
 	log.Println("✅ [main] Routes registered")
 
 	router.GET("/api-1", func(c *gin.Context) {

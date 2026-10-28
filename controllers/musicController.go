@@ -13,7 +13,6 @@ import (
 	"github.com/ishanbagra18/ecommerce-using-go/database"
 	"github.com/ishanbagra18/ecommerce-using-go/helpers"
 	"github.com/ishanbagra18/ecommerce-using-go/models"
-	"github.com/ishanbagra18/ecommerce-using-go/services"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -34,15 +33,6 @@ func GetSongByID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		songID := c.Param("song_id")
 		var song models.Song
-
-		// 0️⃣ Support Jamendo external tracks
-		if strings.HasPrefix(songID, "jamendo_") {
-			extSong, err := services.GetJamendoTrackByID(context.Background(), songID)
-			if err == nil && extSong != nil {
-				c.JSON(http.StatusOK, gin.H{"song": extSong})
-				return
-			}
-		}
 
 		// 1️⃣ Fetch song
 		err := songcollection.FindOne(
@@ -835,15 +825,6 @@ func AutocompleteSearch(c *gin.Context) {
 
 	if songs == nil {
 		songs = []models.Song{}
-	}
-
-	// Enrich autocomplete with Jamendo Creative Commons tracks if space permits
-	if len(songs) < 8 {
-		remaining := 8 - len(songs)
-		jamendoTracks, jErr := services.SearchJamendoTracks(context.Background(), query, remaining)
-		if jErr == nil && len(jamendoTracks) > 0 {
-			songs = append(songs, jamendoTracks...)
-		}
 	}
 
 	log.Printf("✅ Found %d suggestions\n", len(songs))
