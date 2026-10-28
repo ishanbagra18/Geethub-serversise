@@ -17,6 +17,8 @@ func MusicRoute(router *gin.Engine) {
 	router.GET("/music/topsongs", controller.MostLikedSongs())
 	router.GET("/music/saved", controller.MostSavedSongs())
 	router.GET("/music/trendingsongs", controller.TrendingSongs())
+	router.GET("/music/stream-url/:song_id", middleware.OptionalAuthentication(), controller.GetSignedStreamURL())
+	router.GET("/music/stream/:song_id", controller.StreamMedia())
 
 
 	// PROTECTED ROUTES

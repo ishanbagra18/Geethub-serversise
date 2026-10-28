@@ -11,6 +11,7 @@ import (
 	"github.com/ishanbagra18/ecommerce-using-go/controllers"
 	"github.com/ishanbagra18/ecommerce-using-go/database"
 	"github.com/ishanbagra18/ecommerce-using-go/helpers"
+	"github.com/ishanbagra18/ecommerce-using-go/middleware"
 	"github.com/ishanbagra18/ecommerce-using-go/routes"
 	"github.com/joho/godotenv"
 )
@@ -33,6 +34,7 @@ func main() {
 	controllers.InitCommentController()
 	controllers.InitBadgeController()
 	controllers.InitMoodController()
+	controllers.InitRecommendationController()
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -60,20 +62,23 @@ func main() {
 	}
 
 	router := gin.New()
-	router.Use(gin.Logger())
+	router.Use(middleware.RequestID())
+	router.Use(middleware.ErrorTrackingRecovery())
+	router.Use(middleware.StructuredLogger(nil))
 
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     corsOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
-		ExposeHeaders:    []string{"Content-Length"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "X-Request-ID"},
+		ExposeHeaders:    []string{"Content-Length", "X-Request-ID"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
 
-	log.Println("✅ [main] Gin router initialized")
+	log.Println("✅ [main] Gin router initialized with RequestID and Structured Observability")
 
 	log.Println("🔍 [main] Registering routes...")
+	routes.HealthRoutes(router)
 	routes.UserRoute(router)
 	routes.AuthRoute(router)
 	routes.MusicRoute(router)
@@ -86,6 +91,7 @@ func main() {
 	routes.CommentRoutes(router)
 	routes.BadgeRoutes(router)
 	routes.MoodRoutes(router)
+	routes.RecommendationRoutes(router)
 	log.Println("✅ [main] Routes registered")
 
 	router.GET("/api-1", func(c *gin.Context) {

@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"io"
 	"log"
 	"net/http"
 	"regexp"
@@ -833,5 +834,129 @@ func AutocompleteSearch(c *gin.Context) {
 func strPtr(s string) *string {
 	return &s
 }
+
+// GetSignedStreamURL returns a signed streaming URL with expiration for a song
+// Validates access if the song is marked private
+func GetSignedStreamURL() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		songID := c.Param("song_id")
+		if songID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "song_id is required"})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		var song models.Song
+		err := songcollection.FindOne(ctx, bson.M{"song_id": songID}).Decode(&song)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "song not found"})
+			return
+		}
+
+		// Check private access
+		callerUserID := ""
+		if uid, exists := c.Get("user_id"); exists {
+			if uidStr, ok := uid.(string); ok {
+				callerUserID = uidStr
+			}
+		}
+
+		if song.IsPrivate != nil && *song.IsPrivate {
+			if callerUserID == "" || (song.UploadedBy != nil && *song.UploadedBy != callerUserID) {
+				c.JSON(http.StatusForbidden, gin.H{
+					"error": "This track is private and can only be accessed by the owner",
+				})
+				return
+			}
+		}
+
+		// 4 hour signed URL duration
+		signedURL, expiresAt := helpers.GenerateSignedMediaURL(songID, callerUserID, 4*time.Hour)
+
+		c.JSON(http.StatusOK, gin.H{
+			"song_id":    songID,
+			"stream_url": signedURL,
+			"direct_url": song.FileURL,
+			"expires_at": expiresAt,
+			"is_private": song.IsPrivate != nil && *song.IsPrivate,
+		})
+	}
+}
+
+// StreamMedia handles streaming of audio media validating signed HMAC-SHA256 signature
+func StreamMedia() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		songID := c.Param("song_id")
+		expires := c.Query("expires")
+		uid := c.Query("uid")
+		sig := c.Query("sig")
+
+		if songID == "" || expires == "" || sig == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "missing signature or expiry query parameters"})
+			return
+		}
+
+		// Verify signature
+		if err := helpers.VerifyMediaSignature(songID, uid, expires, sig); err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		var song models.Song
+		err := songcollection.FindOne(ctx, bson.M{"song_id": songID}).Decode(&song)
+		if err != nil || song.FileURL == nil || *song.FileURL == "" {
+			c.JSON(http.StatusNotFound, gin.H{"error": "audio file not found"})
+			return
+		}
+
+		audioURL := *song.FileURL
+
+		// If remote URL (Cloudinary, S3, CDN, etc.), stream with HTTP Range support
+		if strings.HasPrefix(audioURL, "http://") || strings.HasPrefix(audioURL, "https://") {
+			client := &http.Client{Timeout: 30 * time.Second}
+			req, err := http.NewRequestWithContext(c.Request.Context(), c.Request.Method, audioURL, nil)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to initialize audio stream"})
+				return
+			}
+
+			// Forward Range header if present
+			if rangeHdr := c.GetHeader("Range"); rangeHdr != "" {
+				req.Header.Set("Range", rangeHdr)
+			}
+
+			resp, err := client.Do(req)
+			if err != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": "failed to fetch audio from source"})
+				return
+			}
+			defer resp.Body.Close()
+
+			// Forward relevant streaming headers
+			for _, h := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges"} {
+				if val := resp.Header.Get(h); val != "" {
+					c.Header(h, val)
+				}
+			}
+			if c.Writer.Header().Get("Accept-Ranges") == "" {
+				c.Header("Accept-Ranges", "bytes")
+			}
+			c.Header("Cache-Control", "private, max-age=3600")
+
+			c.Status(resp.StatusCode)
+			_, _ = io.Copy(c.Writer, resp.Body)
+			return
+		}
+
+		// Local file path fallback
+		http.ServeFile(c.Writer, c.Request, audioURL)
+	}
+}
+
 
 

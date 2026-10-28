@@ -23,6 +23,7 @@ type Song struct {
 	CreatedAt   *time.Time         `bson:"created_at" json:"created_at"`
 	UpdatedAt   *time.Time         `bson:"updated_at" json:"updated_at"`
 	SongID      string             `bson:"song_id" json:"song_id"`
+	IsPrivate   *bool              `bson:"is_private,omitempty" json:"is_private,omitempty"`
 	ReleaseDate *time.Time         `bson:"release_date,omitempty" json:"release_date,omitempty"`
 
 	PlayCount      int            `bson:"play_count" json:"play_count"`                                 // Total play count
